@@ -47,10 +47,9 @@ import {
   ClipboardList,
   Brain,
   MapPin,
-  Wrench,
-  ClipboardCheck,
-  Clock,
   User,
+  ArrowRight,
+  FileCheck,
 } from "lucide-react";
 import type {
   SHEReport,
@@ -60,7 +59,6 @@ import type {
 import {
   RISK_COLORS,
   SEVERITY_COLORS,
-  WORKFLOW_STATUS_COLORS,
   PPE_LABELS,
 } from "../components/lib/she-api-types";
 import {
@@ -75,10 +73,44 @@ import {
 } from "../components/lib/she-export";
 import { getStoredUser } from "../utils/user";
 
+// ── Navigation Prompt Banner ──────────────────────────────────────────
+function NavigationPromptBanner({
+  onGoToReports,
+}: {
+  onGoToReports: () => void;
+}) {
+  return (
+    <div className="rounded-xl border-2 border-blue-400 bg-blue-50 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100">
+          <FileCheck className="h-5 w-5 text-blue-600" />
+        </div>
+        <div>
+          <p className="font-semibold text-blue-900">
+            Incident Report Generated Successfully
+          </p>
+          <p className="text-sm text-blue-700 mt-0.5">
+            The report has been saved and is ready for officer review. Head to
+            the <strong>Reports page</strong> where the Safety Officer can
+            verify, <strong>Accept</strong> or <strong>Modify</strong> the
+            report to ensure accuracy before compliance actions are taken.
+          </p>
+        </div>
+      </div>
+      <Button
+        onClick={onGoToReports}
+        className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+      >
+        Go to Reports
+        <ArrowRight className="ml-2 h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export default function IncidentReport() {
   const [, navigate] = useLocation();
 
-  // Get current logged-in user
   const user = getStoredUser();
   const isSafetyDept = user?.department === "Safety Department";
 
@@ -95,13 +127,11 @@ export default function IncidentReport() {
   const [incidentTime, setIncidentTime] = useState("");
   const { toast } = useToast();
 
-  // Fetch departments for the dropdown
   const { data: departments } = useQuery<SHEDepartments>({
     queryKey: ["she-departments"],
     queryFn: fetchDepartments,
   });
 
-  // Analyze mutation
   const analyzeMutation = useMutation({
     mutationFn: (file: File) =>
       analyzeIncidentImage({
@@ -230,7 +260,6 @@ export default function IncidentReport() {
     "medium") as RiskLevel;
   const riskStyle = RISK_COLORS[riskLevel] || RISK_COLORS.medium;
 
-  // Get user display name from stored user
   const getUserDisplayName = () => {
     if (!user) return "Unknown User";
     return (
@@ -243,9 +272,7 @@ export default function IncidentReport() {
     return user.department || "Unknown";
   };
 
-  // ──────────────────────────────────────────────
-  //  ACCESS GUARD: Only Safety Department can file reports
-  // ──────────────────────────────────────────────
+  // ── ACCESS GUARD ──
   if (!isSafetyDept) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -266,9 +293,7 @@ export default function IncidentReport() {
     );
   }
 
-  // ──────────────────────────────────────────────
-  //  UPLOAD VIEW
-  // ──────────────────────────────────────────────
+  // ── UPLOAD VIEW ──
   if (!showResults) {
     const hasPhoto = !!selectedImage;
 
@@ -281,7 +306,6 @@ export default function IncidentReport() {
 
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header with User Info */}
         <div className="mb-8">
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
@@ -295,7 +319,6 @@ export default function IncidentReport() {
                 </p>
               </div>
             </div>
-            {/* Display Current User */}
             {user && (
               <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2">
                 <User className="h-4 w-4 text-gray-600" />
@@ -318,9 +341,8 @@ export default function IncidentReport() {
           </div>
         </div>
 
-        {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* ── LEFT: Form Fields ── */}
+          {/* LEFT: Form Fields */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -329,7 +351,6 @@ export default function IncidentReport() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Department Selector */}
               <div>
                 <Label className="block text-sm font-medium text-gray-700 mb-2">
                   Department (Where incident occurred)
@@ -361,7 +382,6 @@ export default function IncidentReport() {
                 </Select>
               </div>
 
-              {/* Incident Description */}
               <div>
                 <Label
                   htmlFor="description"
@@ -375,9 +395,8 @@ export default function IncidentReport() {
                   value={description}
                   onChange={(e) => {
                     setDescription(e.target.value);
-                    if (showDescriptionError && e.target.value.trim()) {
+                    if (showDescriptionError && e.target.value.trim())
                       setShowDescriptionError(false);
-                    }
                   }}
                   className={`w-full ${showDescriptionError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   rows={4}
@@ -385,7 +404,6 @@ export default function IncidentReport() {
                 />
               </div>
 
-              {/* Location */}
               <div>
                 <Label
                   htmlFor="location"
@@ -402,7 +420,6 @@ export default function IncidentReport() {
                 />
               </div>
 
-              {/* Date and Time */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label
@@ -436,7 +453,6 @@ export default function IncidentReport() {
                 </div>
               </div>
 
-              {/* Display who is creating this report */}
               <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                 <p className="text-xs text-gray-500 mb-1">
                   This report will be filed by:
@@ -449,7 +465,7 @@ export default function IncidentReport() {
             </CardContent>
           </Card>
 
-          {/* ── RIGHT: Photo Upload Card ── */}
+          {/* RIGHT: Photo Upload */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -458,7 +474,6 @@ export default function IncidentReport() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Upload / Drop Area */}
               <div
                 className={`border-2 border-dashed rounded-lg p-10 transition-colors ${
                   hasPhoto
@@ -576,9 +591,7 @@ export default function IncidentReport() {
     );
   }
 
-  // ──────────────────────────────────────────────
-  //  RESULTS VIEW
-  // ──────────────────────────────────────────────
+  // ── RESULTS VIEW ──
   if (!report) return null;
 
   return (
@@ -614,7 +627,10 @@ export default function IncidentReport() {
         </DropdownMenu>
       </div>
 
-      {/* ── Report Header with Created By ── */}
+      {/* ── NAVIGATION PROMPT — top of results ── */}
+      <NavigationPromptBanner onGoToReports={() => navigate("/reports")} />
+
+      {/* Report Header */}
       <Card className={`border-2 ${riskStyle.border}`}>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -634,7 +650,6 @@ export default function IncidentReport() {
                 {report.report_header.report_date} at{" "}
                 {report.report_header.report_time}
               </p>
-              {/* Display Created By */}
               {report.created_by && (
                 <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
                   <User className="h-3 w-3" />
@@ -666,7 +681,7 @@ export default function IncidentReport() {
         </CardContent>
       </Card>
 
-      {/* ── AI Summary ── */}
+      {/* AI Summary */}
       {report.ai_summary && (
         <Card>
           <CardHeader>
@@ -719,7 +734,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Incident Details ── */}
+      {/* Incident Details */}
       {report.incident_details && (
         <Card>
           <CardHeader>
@@ -765,7 +780,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── AI Classification ── */}
+      {/* AI Classification */}
       {report.ai_classification && (
         <Card>
           <CardHeader>
@@ -798,7 +813,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Analyzed Image ── */}
+      {/* Analyzed Image */}
       {(report.incident_image?.data_url || imagePreview) && (
         <Card>
           <CardHeader>
@@ -817,7 +832,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Summary ── */}
+      {/* Scene Summary */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -854,7 +869,7 @@ export default function IncidentReport() {
         </CardContent>
       </Card>
 
-      {/* ── PPE Compliance ── */}
+      {/* PPE Compliance */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -869,11 +884,7 @@ export default function IncidentReport() {
               .map(([key, val]) => (
                 <div
                   key={key}
-                  className={`flex items-center gap-2 p-3 rounded-lg border ${
-                    val === 1
-                      ? "bg-green-50 border-green-200"
-                      : "bg-red-50 border-red-200"
-                  }`}
+                  className={`flex items-center gap-2 p-3 rounded-lg border ${val === 1 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}
                 >
                   {val === 1 ? (
                     <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
@@ -886,7 +897,6 @@ export default function IncidentReport() {
                 </div>
               ))}
           </div>
-
           {report.ppe_compliance.ppe_status.no_safety_gear === 1 && (
             <div className="bg-red-100 border border-red-300 rounded-lg p-3 flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-red-700" />
@@ -895,7 +905,6 @@ export default function IncidentReport() {
               </span>
             </div>
           )}
-
           {report.ppe_compliance.missing_ppe.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-red-700 mb-2">
@@ -910,7 +919,6 @@ export default function IncidentReport() {
               </div>
             </div>
           )}
-
           {report.ppe_compliance.ppe_hazards.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -937,7 +945,7 @@ export default function IncidentReport() {
         </CardContent>
       </Card>
 
-      {/* ── Environmental Hazards ── */}
+      {/* Environmental Hazards */}
       {report.environmental_hazards.length > 0 && (
         <Card>
           <CardHeader>
@@ -975,7 +983,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Unsafe Behaviors ── */}
+      {/* Unsafe Behaviors */}
       {report.unsafe_behaviors.length > 0 && (
         <Card>
           <CardHeader>
@@ -1014,7 +1022,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Corrective Actions ── */}
+      {/* Corrective Actions */}
       {report.corrective_actions.length > 0 && (
         <Card>
           <CardHeader>
@@ -1056,7 +1064,7 @@ export default function IncidentReport() {
         </Card>
       )}
 
-      {/* ── Risk Assessment ── */}
+      {/* Risk Assessment */}
       <Card className={`border-2 ${riskStyle.border}`}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -1087,6 +1095,9 @@ export default function IncidentReport() {
         </CardContent>
       </Card>
 
+      {/* Bottom Navigation Prompt (repeated for long reports) */}
+      <NavigationPromptBanner onGoToReports={() => navigate("/reports")} />
+
       <div className="text-center text-sm text-gray-500 pb-4">
         <p>
           Powered by AI - EEI Corporation SHE Department - Report generated{" "}
@@ -1098,7 +1109,7 @@ export default function IncidentReport() {
   );
 }
 
-// ── Helper Components ──
+// ── Helper Components ──────────────────────────────────────────────────
 
 function StatCard({
   icon,

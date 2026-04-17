@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
+import { Textarea } from "../components/ui/textarea";
 import { useToast } from "../hooks/use-toast";
 import {
   FileText,
@@ -38,6 +39,9 @@ import {
   RefreshCcw,
   MapPin,
   User,
+  CheckCircle2,
+  PenLine,
+  ClipboardList,
 } from "lucide-react";
 import type {
   SHEReportsResponse,
@@ -97,6 +101,145 @@ const RISK_LEVEL_CONFIG: Record<
   },
 };
 
+// ── Accept Confirmation Modal ─────────────────────────────────────────
+function AcceptReportDialog({
+  report,
+  onConfirm,
+  isLoading,
+}: {
+  report: SHEReportListItem;
+  onConfirm: () => void;
+  isLoading: boolean;
+}) {
+  const reportNumber = (report as any).report_number || "";
+  const uniqueId = report.id || (report as any)._id || "N/A";
+  const displayId = reportNumber ? reportNumber : `${uniqueId.slice(0, 8)}…`;
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+          )}
+          Accept
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            Accept Report?
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-2">
+            <p>
+              You are about to accept report{" "}
+              <span className="font-semibold text-gray-800">{displayId}</span>.
+              This confirms the accuracy of the incident details.
+            </p>
+            <p className="text-blue-700 bg-blue-50 rounded-md px-3 py-2 text-sm font-medium">
+              📋 After accepting, you will be redirected to the{" "}
+              <strong>Compliance page</strong> to complete the required
+              compliance actions.
+            </p>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            Accept & Go to Compliance
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// ── Modify Report Dialog ──────────────────────────────────────────────
+function ModifyReportDialog({
+  report,
+  onConfirm,
+  isLoading,
+}: {
+  report: SHEReportListItem;
+  onConfirm: (notes: string) => void;
+  isLoading: boolean;
+}) {
+  const [notes, setNotes] = useState("");
+  const reportNumber = (report as any).report_number || "";
+  const uniqueId = report.id || (report as any)._id || "N/A";
+  const displayId = reportNumber ? reportNumber : `${uniqueId.slice(0, 8)}…`;
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="flex-1 border-amber-400 text-amber-700 hover:bg-amber-50"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+          ) : (
+            <PenLine className="h-3.5 w-3.5 mr-1" />
+          )}
+          Modify
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <PenLine className="h-5 w-5 text-amber-600" />
+            Modify Report
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>
+                Suggest modifications for report{" "}
+                <span className="font-semibold text-gray-800">{displayId}</span>
+                . Describe what details need to be corrected or updated.
+              </p>
+              <Textarea
+                placeholder="Describe the changes needed (e.g., incorrect location, wrong incident type, missing PPE details)..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="min-h-[100px] text-sm text-gray-800"
+              />
+              <p className="text-blue-700 bg-blue-50 rounded-md px-3 py-2 text-sm font-medium">
+                📋 After submitting modifications, you will be redirected to the{" "}
+                <strong>Compliance page</strong> to complete the required
+                compliance actions.
+              </p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setNotes("")}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onConfirm(notes)}
+            disabled={!notes.trim()}
+            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50"
+          >
+            Submit & Go to Compliance
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export default function Reports() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -122,6 +265,10 @@ export default function Reports() {
     isSafetyDept ? "all" : userDeptKey,
   );
   const [riskFilter, setRiskFilter] = useState<string>("all");
+
+  // Track which report is being actioned
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [modifyingId, setModifyingId] = useState<string | null>(null);
 
   const filters: { department?: string; risk_level?: string } = {};
   if (departmentFilter !== "all" && departmentFilter)
@@ -170,6 +317,60 @@ export default function Reports() {
       });
     },
   });
+
+  // Handle Accept — mark report as accepted then navigate to compliance
+  const handleAccept = (report: SHEReportListItem) => {
+    setAcceptingId(report.id);
+    // Optimistically update query cache status
+    queryClient.setQueryData<SHEReportsResponse>(
+      ["she-reports", departmentFilter, riskFilter],
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          reports: old.reports.map((r) =>
+            r.id === report.id ? { ...r, workflow_status: "accepted" } : r,
+          ),
+        };
+      },
+    );
+    toast({
+      title: "Report Accepted",
+      description: "The report has been accepted. Redirecting to Compliance…",
+    });
+    setTimeout(() => {
+      setAcceptingId(null);
+      navigate("/compliance");
+    }, 800);
+  };
+
+  // Handle Modify — log modification notes then navigate to compliance
+  const handleModify = (report: SHEReportListItem, notes: string) => {
+    setModifyingId(report.id);
+    queryClient.setQueryData<SHEReportsResponse>(
+      ["she-reports", departmentFilter, riskFilter],
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          reports: old.reports.map((r) =>
+            r.id === report.id
+              ? { ...r, workflow_status: "modification_requested" }
+              : r,
+          ),
+        };
+      },
+    );
+    toast({
+      title: "Modification Submitted",
+      description:
+        "Your modification notes have been recorded. Redirecting to Compliance…",
+    });
+    setTimeout(() => {
+      setModifyingId(null);
+      navigate("/compliance");
+    }, 800);
+  };
 
   const getRiskStyle = (level: string) => {
     return (
@@ -230,13 +431,24 @@ export default function Reports() {
             {total} report{total !== 1 ? "s" : ""} found
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isLoading}
-        >
-          <RefreshCcw className="mr-2 h-4 w-4" /> Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          {isSafetyDept && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <ClipboardList className="h-4 w-4 text-blue-500 shrink-0" />
+              <span>
+                <strong>Officer actions:</strong> Accept to confirm accuracy, or
+                Modify to flag corrections — both redirect to Compliance.
+              </span>
+            </div>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       <Card className="mb-6">
@@ -304,10 +516,15 @@ export default function Reports() {
               getRiskStyle={getRiskStyle}
               onView={() => navigate(`/reports/${r.id}`)}
               onArchive={() => deleteMutation.mutate(r.id)}
+              onAccept={() => handleAccept(r)}
+              onModify={(notes) => handleModify(r, notes)}
               isArchiving={
                 deleteMutation.isPending && deleteMutation.variables === r.id
               }
+              isAccepting={acceptingId === r.id}
+              isModifying={modifyingId === r.id}
               canArchive={isSafetyDept}
+              isSafetyDept={isSafetyDept}
             />
           ))}
         </div>
@@ -322,8 +539,13 @@ function ReportCard({
   getRiskStyle,
   onView,
   onArchive,
+  onAccept,
+  onModify,
   isArchiving,
+  isAccepting,
+  isModifying,
   canArchive,
+  isSafetyDept,
 }: {
   report: SHEReportListItem;
   getRiskStyle: (level: string) => {
@@ -335,8 +557,13 @@ function ReportCard({
   };
   onView: () => void;
   onArchive: () => void;
+  onAccept: () => void;
+  onModify: (notes: string) => void;
   isArchiving: boolean;
+  isAccepting: boolean;
+  isModifying: boolean;
   canArchive: boolean;
+  isSafetyDept: boolean;
 }) {
   const risk = getRiskStyle(report.overall_risk);
 
@@ -349,15 +576,16 @@ function ReportCard({
     (report as any).created_by?.department ||
     "";
 
-  // Get report number or show Report ID with unique ID
   const reportNumber = (report as any).report_number || "";
   const uniqueId = report.id || (report as any)._id || "N/A";
   const shortUniqueId =
     uniqueId.length > 12 ? uniqueId.slice(0, 8) + "..." : uniqueId;
-
-  // If there's a human-readable report number (RPT-0001), use it
-  // Otherwise show "Report ID: 038abacf..."
   const displayId = reportNumber ? reportNumber : `Report ID: ${shortUniqueId}`;
+
+  const workflowStatus = report.workflow_status;
+  const isAlreadyActioned =
+    workflowStatus === "accepted" ||
+    workflowStatus === "modification_requested";
 
   return (
     <Card
@@ -378,7 +606,6 @@ function ReportCard({
           </span>
         </div>
 
-        {/* Display ID - either RPT-0001 or Report ID: 038abacf... */}
         <div className="mt-2">
           <p className="text-xs font-mono font-semibold text-blue-600 bg-blue-50 inline-block px-2 py-0.5 rounded">
             Report ID: {displayId}
@@ -421,35 +648,86 @@ function ReportCard({
             {report.total_findings} finding
             {report.total_findings !== 1 ? "s" : ""}
           </div>
-          {report.workflow_status && (
-            <Badge className="text-xs bg-gray-100 text-gray-800">
-              {report.workflow_status.replace(/_/g, " ")}
+          {workflowStatus && (
+            <Badge
+              className={`text-xs ${
+                workflowStatus === "accepted"
+                  ? "bg-green-100 text-green-800"
+                  : workflowStatus === "modification_requested"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-gray-100 text-gray-800"
+              }`}
+            >
+              {workflowStatus.replace(/_/g, " ")}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2 pt-2 border-t">
+
+        {/* ── Action Buttons ── */}
+        <div className="pt-2 border-t space-y-2">
+          {/* View button always visible */}
           <Button
             variant="outline"
             size="sm"
-            className="flex-1"
+            className="w-full"
             onClick={onView}
           >
-            <Eye className="h-3.5 w-3.5 mr-1" /> View
+            <Eye className="h-3.5 w-3.5 mr-1" /> View Details
           </Button>
+
+          {/* Accept & Modify — only for Safety Officers, and only if not yet actioned */}
+          {isSafetyDept && !isAlreadyActioned && (
+            <div className="flex gap-2">
+              <AcceptReportDialog
+                report={report}
+                onConfirm={onAccept}
+                isLoading={isAccepting}
+              />
+              <ModifyReportDialog
+                report={report}
+                onConfirm={onModify}
+                isLoading={isModifying}
+              />
+            </div>
+          )}
+
+          {/* Already actioned indicator */}
+          {isSafetyDept && isAlreadyActioned && (
+            <div
+              className={`flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-md ${
+                workflowStatus === "accepted"
+                  ? "bg-green-50 text-green-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {workflowStatus === "accepted" ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Report Accepted
+                </>
+              ) : (
+                <>
+                  <PenLine className="h-3.5 w-3.5" /> Modification Requested
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Archive button */}
           {canArchive && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="text-red-600"
+                  className="w-full text-red-500 hover:text-red-700 hover:bg-red-50"
                   disabled={isArchiving}
                 >
                   {isArchiving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
                   ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
                   )}
+                  Archive Report
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
