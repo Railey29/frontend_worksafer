@@ -1,13 +1,12 @@
 import React from "react";
 import { WORKFLOW_STATUS_COLORS } from "./lib/she-api-types";
 
-// The 5-stage workflow progression
 const WORKFLOW_STAGES = [
-  { key: "submitted", label: "Submitted", order: 0 },
-  { key: "under_review", label: "Under Review", order: 1 },
-  { key: "action_required", label: "Action Required", order: 2 },
-  { key: "in_progress", label: "In Progress", order: 3 },
-  { key: "closed", label: "Closed", order: 4 },
+  { key: "submitted",       label: "Submitted" },
+  { key: "under_review",    label: "Under Review" },
+  { key: "action_required", label: "Action Required" },
+  { key: "in_progress",     label: "In Progress" },
+  { key: "closed",          label: "Closed" },
 ];
 
 interface WorkflowStatusVisualizationProps {
@@ -16,75 +15,98 @@ interface WorkflowStatusVisualizationProps {
   size?: "sm" | "md" | "lg";
 }
 
+const CheckIcon = ({ size }: { size: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 14 14"
+    fill="none"
+    aria-hidden="true"
+  >
+    <polyline
+      points="2,7 5.5,10.5 12,3.5"
+      stroke="white"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export function WorkflowStatusVisualization({
   currentStatus,
   className = "",
   size = "md",
 }: WorkflowStatusVisualizationProps) {
-  // Find current stage index
-  const currentStage = WORKFLOW_STAGES.findIndex(
-    (s) => s.key === currentStatus,
+  const currentStage = Math.max(
+    0,
+    WORKFLOW_STAGES.findIndex((s) => s.key === currentStatus),
   );
 
-  const dotSizeMap = {
-    sm: "h-6 w-6",
-    md: "h-8 w-8",
-    lg: "h-10 w-10",
+  const circleSizeMap = {
+    sm: { outer: "h-7 w-7", iconPx: 12, text: "text-xs" },
+    md: { outer: "h-9 w-9", iconPx: 14, text: "text-sm" },
+    lg: { outer: "h-11 w-11", iconPx: 16, text: "text-base" },
   };
 
-  const textSizeMap = {
-    sm: "text-xs",
-    md: "text-sm",
-    lg: "text-base",
-  };
-
-  const dotSize = dotSizeMap[size];
-  const textSize = textSizeMap[size];
+  const { outer, iconPx, text } = circleSizeMap[size];
+  const currentLabel =
+    WORKFLOW_STATUS_COLORS[currentStatus]?.label ||
+    WORKFLOW_STAGES[currentStage]?.label ||
+    currentStatus;
 
   return (
-    <div className={`flex flex-col gap-4 ${className}`}>
-      {/* Horizontal workflow visualization */}
-      <div className="flex items-center justify-between">
+    <div className={`flex flex-col gap-5 ${className}`}>
+      {/* Stepper row */}
+      <div className="flex items-start">
         {WORKFLOW_STAGES.map((stage, index) => {
-          const isCompleted = index <= currentStage;
+          const isCompleted = index < currentStage;
           const isCurrent = index === currentStage;
-          const colors = WORKFLOW_STATUS_COLORS[stage.key] || {
-            bg: "bg-gray-100",
-            text: "text-gray-800",
-            label: stage.label,
-          };
+          const isPending = index > currentStage;
 
           return (
             <React.Fragment key={stage.key}>
-              {/* Dot */}
-              <div className="flex flex-col items-center gap-2">
+              {/* Step */}
+              <div className="flex flex-col items-center gap-2 shrink-0">
                 <div
                   className={`
-                    ${dotSize}
-                    rounded-full
+                    ${outer} rounded-full
                     flex items-center justify-center
-                    font-semibold
-                    transition-all duration-300
-                    ${isCurrent ? "ring-2 ring-offset-2 scale-110" : ""}
-                    ${isCompleted ? colors.bg + " " + colors.text : "bg-gray-200 text-gray-500"}
+                    font-medium transition-all duration-300
+                    ${isCompleted
+                      ? "bg-blue-600 text-white"
+                      : isCurrent
+                      ? "bg-white border-2 border-blue-600 text-blue-600 ring-4 ring-blue-100"
+                      : "bg-white border border-gray-200 text-gray-400"
+                    }
                   `}
                 >
-                  {index + 1}
+                  {isCompleted ? (
+                    <CheckIcon size={iconPx} />
+                  ) : (
+                    <span className={`${text} leading-none`}>{index + 1}</span>
+                  )}
                 </div>
                 <span
-                  className={`${textSize} font-medium text-gray-900 text-center whitespace-nowrap`}
+                  className={`
+                    ${text} text-center whitespace-nowrap leading-tight
+                    ${isCurrent ? "text-gray-900 font-medium" : ""}
+                    ${isCompleted ? "text-gray-700" : ""}
+                    ${isPending ? "text-gray-400" : ""}
+                  `}
                 >
                   {stage.label}
                 </span>
               </div>
 
-              {/* Connector line */}
+              {/* Connector */}
               {index < WORKFLOW_STAGES.length - 1 && (
                 <div
-                  className={`flex-1 h-1 mx-2 ${
-                    isCompleted ? colors.bg : "bg-gray-200"
-                  } transition-colors duration-300`}
-                  style={{ minWidth: "40px" }}
+                  className={`
+                    flex-1 h-px mt-4 mx-2 transition-colors duration-300
+                    ${isCompleted ? "bg-blue-600" : "bg-gray-200"}
+                  `}
+                  style={{ minWidth: "32px" }}
                 />
               )}
             </React.Fragment>
@@ -92,16 +114,12 @@ export function WorkflowStatusVisualization({
         })}
       </div>
 
-      {/* Status information */}
-      <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-        <div
-          className={`h-3 w-3 rounded-full ${WORKFLOW_STATUS_COLORS[currentStatus]?.bg.replace("bg-", "bg-")}`}
-        />
-        <p className="text-sm text-gray-700">
-          Current Status:{" "}
-          <strong>
-            {WORKFLOW_STATUS_COLORS[currentStatus]?.label || currentStatus}
-          </strong>
+      {/* Status pill */}
+      <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-gray-50 border border-gray-200 w-fit">
+        <div className="h-2 w-2 rounded-full bg-blue-600 shrink-0" />
+        <p className="text-sm text-gray-500">
+          Current status:{" "}
+          <span className="font-medium text-gray-900">{currentLabel}</span>
         </p>
       </div>
     </div>
@@ -116,45 +134,57 @@ export function WorkflowStatusVisualizationCompact({
   currentStatus: string;
   className?: string;
 }) {
-  const currentStage = WORKFLOW_STAGES.findIndex(
-    (s) => s.key === currentStatus,
+  const currentStage = Math.max(
+    0,
+    WORKFLOW_STAGES.findIndex((s) => s.key === currentStatus),
   );
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`space-y-1 ${className}`}>
       {WORKFLOW_STAGES.map((stage, index) => {
-        const isCompleted = index <= currentStage;
+        const isCompleted = index < currentStage;
         const isCurrent = index === currentStage;
-        const colors = WORKFLOW_STATUS_COLORS[stage.key] || {
-          bg: "bg-gray-100",
-          text: "text-gray-800",
-          label: stage.label,
-        };
+        const isPending = index > currentStage;
 
         return (
-          <div key={stage.key} className="flex items-center gap-3">
+          <div key={stage.key} className="flex items-center gap-3 py-1">
+            {/* Circle */}
             <div
               className={`
-                h-6 w-6
-                rounded-full
+                h-7 w-7 rounded-full shrink-0
                 flex items-center justify-center
-                font-semibold text-xs
-                transition-all duration-300
-                ${isCurrent ? "ring-2 ring-offset-1 scale-110" : ""}
-                ${isCompleted ? colors.bg + " " + colors.text : "bg-gray-200 text-gray-500"}
+                font-medium text-xs
+                transition-all duration-200
+                ${isCompleted
+                  ? "bg-blue-600 text-white"
+                  : isCurrent
+                  ? "bg-white border-2 border-blue-600 text-blue-600 ring-2 ring-blue-100"
+                  : "bg-white border border-gray-200 text-gray-400"
+                }
               `}
             >
-              {index + 1}
+              {isCompleted ? (
+                <CheckIcon size={11} />
+              ) : (
+                <span className="leading-none">{index + 1}</span>
+              )}
             </div>
+
+            {/* Label */}
             <span
-              className={`text-sm font-medium ${
-                isCurrent ? "font-bold text-gray-900" : "text-gray-600"
-              }`}
+              className={`
+                text-sm leading-tight flex-1
+                ${isCurrent ? "font-medium text-gray-900" : ""}
+                ${isCompleted ? "text-gray-600" : ""}
+                ${isPending ? "text-gray-400" : ""}
+              `}
             >
               {stage.label}
             </span>
+
+            {/* Current badge */}
             {isCurrent && (
-              <span className="ml-auto text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
+              <span className="text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
                 Current
               </span>
             )}
