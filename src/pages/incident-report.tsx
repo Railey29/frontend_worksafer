@@ -73,6 +73,15 @@ import {
 } from "../components/lib/she-export";
 import { getStoredUser } from "../utils/user";
 
+// ── Helpers ───────────────────────────────────────────────────────────
+function getNowDate() {
+  return new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD"
+}
+
+function getNowTime() {
+  return new Date().toTimeString().slice(0, 5); // "HH:MM"
+}
+
 // ── Navigation Prompt Banner ──────────────────────────────────────────
 function NavigationPromptBanner({
   onGoToReports,
@@ -123,8 +132,8 @@ export default function IncidentReport() {
   const [description, setDescription] = useState("");
   const [showDescriptionError, setShowDescriptionError] = useState(false);
   const [location, setLocation] = useState("");
-  const [incidentDate, setIncidentDate] = useState("");
-  const [incidentTime, setIncidentTime] = useState("");
+  const [incidentDate, setIncidentDate] = useState(getNowDate);
+  const [incidentTime, setIncidentTime] = useState(getNowTime);
   const { toast } = useToast();
 
   const { data: departments } = useQuery<SHEDepartments>({
@@ -222,8 +231,8 @@ export default function IncidentReport() {
     setDescription("");
     setShowDescriptionError(false);
     setLocation("");
-    setIncidentDate("");
-    setIncidentTime("");
+    setIncidentDate(getNowDate());
+    setIncidentTime(getNowTime());
   };
 
   const handleExport = (format: string) => {
@@ -426,7 +435,7 @@ export default function IncidentReport() {
                     htmlFor="incident-date"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Date (optional)
+                    Incident Date
                   </Label>
                   <Input
                     id="incident-date"
@@ -441,7 +450,7 @@ export default function IncidentReport() {
                     htmlFor="incident-time"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Time (optional)
+                    Incident Time
                   </Label>
                   <Input
                     id="incident-time"
