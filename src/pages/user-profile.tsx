@@ -45,13 +45,17 @@ import {
   Loader2,
 } from "lucide-react";
 
+// Only Safety department users see the Role selector
+const SAFETY_DEPARTMENT = "Safety";
+
 // Schemas
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
   department: z.string().min(1, "Department is required"),
-  role: z.string().min(1, "Role is required"),
+  // role is optional — only sent for Safety dept users
+  role: z.string().optional(),
   phoneNumber: z.string().optional(),
 });
 
@@ -96,7 +100,7 @@ export default function UserProfile() {
   const [twoFactorLoading, setTwoFactorLoading] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [twoFactorMethod, setTwoFactorMethod] = useState<"email" | "app">(
-    "email"
+    "email",
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -114,6 +118,10 @@ export default function UserProfile() {
     },
   });
 
+  // Reactively watch department to show/hide Role field
+  const watchedDepartment = profileForm.watch("department");
+  const isSafetyDepartment = watchedDepartment === SAFETY_DEPARTMENT;
+
   const [appSettings, setAppSettings] = useState({
     autoSaveReports: false,
     dataSharing: false,
@@ -129,10 +137,13 @@ export default function UserProfile() {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("No token found");
 
-        const res = await fetch("https://backendworksafer-production.up.railway.app/auth/settings", {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(
+          "https://backendworksafer-production.up.railway.app/auth/settings",
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
 
         if (!res.ok) throw new Error("Failed to fetch app settings");
 
@@ -154,7 +165,7 @@ export default function UserProfile() {
 
   const handleAppSettingChange = (
     field: keyof AppSettingsFormData,
-    value: any
+    value: any,
   ) => {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
   };
@@ -164,14 +175,17 @@ export default function UserProfile() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No token found");
 
-      const res = await fetch("https://backendworksafer-production.up.railway.app/auth/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        "https://backendworksafer-production.up.railway.app/auth/settings",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(appSettings),
         },
-        body: JSON.stringify(appSettings),
-      });
+      );
 
       const result = await res.json();
       if (!res.ok)
@@ -221,13 +235,16 @@ export default function UserProfile() {
           return;
         }
 
-        const response = await fetch("https://backendworksafer-production.up.railway.app/api/user/profile", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+        const response = await fetch(
+          "https://backendworksafer-production.up.railway.app/api/user/profile",
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
           },
-        });
+        );
 
         if (!response.ok) throw new Error("Failed to fetch user profile");
 
@@ -292,14 +309,23 @@ export default function UserProfile() {
         return;
       }
 
-      const response = await fetch("https://backendworksafer-production.up.railway.app/api/user/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      // Build payload — only include role for Safety department users
+      const payload: ProfileFormData = { ...data };
+      if (payload.department !== SAFETY_DEPARTMENT) {
+        delete payload.role;
+      }
+
+      const response = await fetch(
+        "https://backendworksafer-production.up.railway.app/api/user/profile",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(data),
-      });
+      );
 
       if (!response.ok) {
         throw new Error("Failed to update profile");
@@ -343,7 +369,7 @@ export default function UserProfile() {
             currentPassword: data.currentPassword,
             newPassword: data.newPassword,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -387,7 +413,7 @@ export default function UserProfile() {
       }
 
       const response = await fetch(
-        "https://backendworksafer-production.up.railway.app/api/user/notifications", // ✅ CORRECT ROUTE
+        "https://backendworksafer-production.up.railway.app/api/user/notifications",
         {
           method: "PUT",
           headers: {
@@ -395,7 +421,7 @@ export default function UserProfile() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(data),
-        }
+        },
       );
 
       const result = await response.json();
@@ -424,33 +450,35 @@ export default function UserProfile() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authentication token found");
 
-      // 1️⃣ Generate 2FA secret
-      const response = await fetch("https://backendworksafer-production.up.railway.app/auth/generate-2fa", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetch(
+        "https://backendworksafer-production.up.railway.app/auth/generate-2fa",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       if (!response.ok) throw new Error("Failed to generate 2FA setup");
       const data = await response.json();
-
       sessionStorage.setItem("2fa-setup", JSON.stringify(data));
 
-      // 2️⃣ Persist 2FA enabled in backend
-      const enableRes = await fetch("https://backendworksafer-production.up.railway.app/auth/enable-2fa", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const enableRes = await fetch(
+        "https://backendworksafer-production.up.railway.app/auth/enable-2fa",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       if (!enableRes.ok) throw new Error("Failed to persist 2FA in profile");
 
       setTwoFactorEnabled(true);
-
       toast({
         title: "2FA Setup",
         description: "2FA enabled. Please configure your authenticator app.",
@@ -475,23 +503,21 @@ export default function UserProfile() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authentication token found");
 
-      // 1️⃣ Disable 2FA in backend
-      const response = await fetch("https://backendworksafer-production.up.railway.app/auth/disable-2fa", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetch(
+        "https://backendworksafer-production.up.railway.app/auth/disable-2fa",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       if (!response.ok) throw new Error("Failed to disable 2FA");
 
       setTwoFactorEnabled(false);
-
-      toast({
-        title: "Success",
-        description: "2FA has been disabled.",
-      });
+      toast({ title: "Success", description: "2FA has been disabled." });
     } catch (error: any) {
       console.error("Error disabling 2FA:", error);
       toast({
@@ -503,8 +529,6 @@ export default function UserProfile() {
       setTwoFactorLoading(false);
     }
   };
-
-  //function of delete and edit (photo change)
 
   if (loading) {
     return (
@@ -562,19 +586,22 @@ export default function UserProfile() {
           </TabsTrigger>
         </TabsList>
 
+        {/* ─── PROFILE TAB ─── */}
         <TabsContent value="profile">
           <Card>
             <CardHeader>
               <CardTitle>Profile Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Avatar + Photo Controls */}
               <div className="flex items-center space-x-6">
                 <Avatar className="h-24 w-24">
                   {profilePhoto ? (
                     <img src={profilePhoto} alt="Profile Photo" />
                   ) : (
                     <AvatarFallback className="text-xl">
-                      {(profileForm.watch("firstName")?.[0] || "") + (profileForm.watch("lastName")?.[0] || "")}
+                      {(profileForm.watch("firstName")?.[0] || "") +
+                        (profileForm.watch("lastName")?.[0] || "")}
                     </AvatarFallback>
                   )}
                 </Avatar>
@@ -587,7 +614,7 @@ export default function UserProfile() {
                     const file = e.target.files?.[0];
                     if (!file) return;
 
-                    const MAX_SIZE = 1 * 1024 * 1024; // 1MB
+                    const MAX_SIZE = 1 * 1024 * 1024;
                     if (file.size > MAX_SIZE) {
                       toast({
                         title: "Error",
@@ -595,7 +622,7 @@ export default function UserProfile() {
                           "File is too large. Maximum allowed size is 1MB.",
                         variant: "destructive",
                       });
-                      e.target.value = ""; // reset file input
+                      e.target.value = "";
                       return;
                     }
 
@@ -618,16 +645,14 @@ export default function UserProfile() {
                         "https://backendworksafer-production.up.railway.app/api/user/upload-photo",
                         {
                           method: "POST",
-                          headers: {
-                            Authorization: `Bearer ${token}`,
-                          },
+                          headers: { Authorization: `Bearer ${token}` },
                           body: formData,
-                        }
+                        },
                       );
 
                       if (!res.ok)
                         throw new Error(
-                          "File is too large. Maximum allowed size is 1MB."
+                          "File is too large. Maximum allowed size is 1MB.",
                         );
 
                       const data = await res.json();
@@ -635,8 +660,7 @@ export default function UserProfile() {
                         title: "Success",
                         description: "Profile photo updated successfully",
                       });
-
-                      setProfilePhoto(data.photoUrl); // update preview
+                      setProfilePhoto(data.photoUrl);
                     } catch (error) {
                       console.error("Error uploading photo:", error);
                       toast({
@@ -649,7 +673,6 @@ export default function UserProfile() {
                 />
                 <div>
                   {profilePhoto ? (
-                    // If user has a photo → show Reset button
                     <Button
                       variant="outline"
                       className="flex items-center space-x-2"
@@ -664,28 +687,24 @@ export default function UserProfile() {
                           });
                           return;
                         }
-
                         try {
                           const res = await fetch(
                             "https://backendworksafer-production.up.railway.app/api/user/delete-photo",
                             {
                               method: "DELETE",
                               headers: { Authorization: `Bearer ${token}` },
-                            }
+                            },
                           );
-
                           const data = await res.json();
                           if (!res.ok)
                             throw new Error(
-                              data.error || "Failed to delete photo"
+                              data.error || "Failed to delete photo",
                             );
-
                           toast({
                             title: "Success",
                             description: "Profile photo has been reset",
                           });
-
-                          setProfilePhoto(null); // reset preview
+                          setProfilePhoto(null);
                         } catch (error: unknown) {
                           console.error("Error deleting photo:", error);
                           toast({
@@ -702,7 +721,6 @@ export default function UserProfile() {
                       <span>Reset Photo</span>
                     </Button>
                   ) : (
-                    // If no photo → show Change Photo button
                     <Button
                       variant="outline"
                       className="flex items-center space-x-2"
@@ -712,7 +730,6 @@ export default function UserProfile() {
                       <span>Change Photo</span>
                     </Button>
                   )}
-
                   <p className="text-sm text-gray-500 mt-2">
                     JPG, JPEG or PNG. 1MB max.
                   </p>
@@ -785,46 +802,57 @@ export default function UserProfile() {
                       )}
                     />
 
-                    <FormField
-                      control={profileForm.control}
-                      name="role"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Role</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select role" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="Safety Officer">
-                                Safety Officer
-                              </SelectItem>
-                              <SelectItem value="Safety Manager">
-                                Safety Manager
-                              </SelectItem>
-                              <SelectItem value="Safety Coordinator">
-                                Safety Coordinator
-                              </SelectItem>
-                              <SelectItem value="Compliance Officer">
-                                Compliance Officer
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {/*
+                      Role selector is ONLY shown for Safety department users.
+                      HR, Quality, Field Ops, and Environmental users will NOT see this field.
+                      The department value comes from the backend (read-only) so users
+                      cannot manipulate which department they belong to.
+                    */}
+                    {isSafetyDepartment && (
+                      <FormField
+                        control={profileForm.control}
+                        name="role"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Role</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value ?? ""}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="Safety Officer">
+                                  Safety Officer
+                                </SelectItem>
+                                <SelectItem value="Safety Manager">
+                                  Safety Manager
+                                </SelectItem>
+                                <SelectItem value="Safety Coordinator">
+                                  Safety Coordinator
+                                </SelectItem>
+                                <SelectItem value="Compliance Officer">
+                                  Compliance Officer
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
 
+                    {/* Phone Number spans full width when Role is hidden */}
                     <FormField
                       control={profileForm.control}
                       name="phoneNumber"
                       render={({ field }) => (
-                        <FormItem className="md:col-span-2">
+                        <FormItem
+                          className={isSafetyDepartment ? "" : "md:col-span-2"}
+                        >
                           <FormLabel>Phone Number</FormLabel>
                           <FormControl>
                             <Input {...field} placeholder="+1 (555) 123-4567" />
@@ -850,6 +878,7 @@ export default function UserProfile() {
           </Card>
         </TabsContent>
 
+        {/* ─── SECURITY TAB ─── */}
         <TabsContent value="security">
           <Card>
             <CardHeader>
@@ -918,6 +947,7 @@ export default function UserProfile() {
           </Card>
         </TabsContent>
 
+        {/* ─── NOTIFICATIONS TAB ─── */}
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
@@ -1061,6 +1091,7 @@ export default function UserProfile() {
           </Card>
         </TabsContent>
 
+        {/* ─── SETTINGS TAB ─── */}
         <TabsContent value="settings">
           <Card>
             <CardHeader>
@@ -1099,9 +1130,8 @@ export default function UserProfile() {
                     }
                   />
                 </div>
-                {/* ===================== */}
-                {/* TWO-FACTOR AUTH (EMAIL) */}
-                {/* ===================== */}
+
+                {/* Two-Factor Authentication */}
                 <div className="flex flex-row items-center justify-between rounded-lg border p-4 mb-4">
                   <div className="space-y-1">
                     <div className="text-base font-medium flex items-center gap-2">
@@ -1120,7 +1150,6 @@ export default function UserProfile() {
                       </p>
                     )}
                   </div>
-
                   <Switch
                     checked={twoFactorEnabled}
                     disabled={twoFactorLoading}
@@ -1134,7 +1163,6 @@ export default function UserProfile() {
                   />
                 </div>
 
-                {/* Optional: Change method if 2FA is enabled */}
                 {twoFactorEnabled && (
                   <div className="flex flex-col space-y-2 rounded-lg border p-4 mb-4">
                     <p className="text-sm font-medium">
@@ -1156,7 +1184,7 @@ export default function UserProfile() {
                                 Authorization: `Bearer ${token}`,
                               },
                               body: JSON.stringify({ method: value }),
-                            }
+                            },
                           );
 
                           if (!res.ok)
