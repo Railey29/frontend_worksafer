@@ -1113,7 +1113,7 @@ function ActionItem({
     resolved: "bg-green-100 text-green-800",
   };
   const statusLabel: Record<string, string> = {
-    pending_review: "Pending Review",
+    pending_review: "Pending for approval",
     reviewed: "Reviewed",
     resolved: "Resolved",
   };
@@ -1176,7 +1176,9 @@ function ActionItem({
                   // simple window open to see full resolution image
                   if (action.proof_image?.data_url) {
                     const win = window.open();
-                    win?.document.write(`<img src="${action.proof_image.data_url}" style="max-width: 100%; height: auto;" />`);
+                    win?.document.write(
+                      `<img src="${action.proof_image.data_url}" style="max-width: 100%; height: auto;" />`,
+                    );
                   }
                 }}
               />
