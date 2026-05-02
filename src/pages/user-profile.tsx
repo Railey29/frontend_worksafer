@@ -372,20 +372,36 @@ export default function UserProfile() {
         },
       );
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error("Failed to change password");
+        // Use the server's error message when available
+        const errorMessage =
+          result?.error ||
+          (response.status === 401
+            ? "Current password is incorrect."
+            : response.status === 404
+              ? "User not found. Please login again."
+              : "Failed to change password. Please try again.");
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return;
       }
 
       toast({
         title: "Success",
-        description: "Password changed successfully",
+        description: "Your password has been changed successfully.",
       });
       passwordForm.reset();
     } catch (err) {
       console.error("Error changing password:", err);
       toast({
         title: "Error",
-        description: "Failed to change password",
+        description:
+          "Unable to connect to the server. Please check your connection and try again.",
         variant: "destructive",
       });
     }
