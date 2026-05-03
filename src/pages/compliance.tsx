@@ -1021,7 +1021,7 @@ function DepartmentComplianceCard({
               Submitted Actions
               {isSafetyDept && pendingActions.length > 0 && (
                 <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  {pendingActions.length} pending review
+                  {pendingActions.length} pending for approval
                 </span>
               )}
             </h4>
@@ -1074,6 +1074,15 @@ function ActionItem({
 }) {
   const [reviewNotes, setReviewNotes] = useState("");
   const [showReview, setShowReview] = useState(false);
+
+  const REVIEW_TEMPLATES = [
+    "Action reviewed and found to be compliant with safety standards.",
+    "Corrective action is adequate. Monitoring will continue.",
+    "Action noted. Additional documentation required before approval.",
+    "Non-compliant. Action does not meet required safety standards.",
+    "Partially compliant. Please revise and resubmit with complete details.",
+    "Reviewed. Escalated to management for further evaluation.",
+  ];
   const queryClient = useQueryClient();
   const normalizedStatus = normalizeComplianceActionStatus(action.status);
 
@@ -1113,7 +1122,7 @@ function ActionItem({
     resolved: "bg-green-100 text-green-800",
   };
   const statusLabel: Record<string, string> = {
-    pending_review: "Pending Review",
+    pending_review: "Pending for approval",
     reviewed: "Reviewed",
     resolved: "Resolved",
   };
@@ -1176,7 +1185,9 @@ function ActionItem({
                   // simple window open to see full resolution image
                   if (action.proof_image?.data_url) {
                     const win = window.open();
-                    win?.document.write(`<img src="${action.proof_image.data_url}" style="max-width: 100%; height: auto;" />`);
+                    win?.document.write(
+                      `<img src="${action.proof_image.data_url}" style="max-width: 100%; height: auto;" />`,
+                    );
                   }
                 }}
               />
@@ -1195,7 +1206,28 @@ function ActionItem({
                 Review
               </Button>
             ) : (
-              <div className="space-y-2 w-64">
+              <div className="space-y-2 w-72">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">
+                    Quick select:
+                  </p>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {REVIEW_TEMPLATES.map((tpl, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setReviewNotes(tpl)}
+                        className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${
+                          reviewNotes === tpl
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                        }`}
+                      >
+                        {tpl.length > 35 ? tpl.slice(0, 35) + "…" : tpl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <Textarea
                   placeholder="Review notes (optional)..."
                   value={reviewNotes}
@@ -1268,6 +1300,15 @@ function ProvideActionForm({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+
+  const ACTION_TEMPLATES = [
+    "Immediate corrective measures have been implemented as per safety protocols.",
+    "Staff have been briefed and re-trained on the relevant compliance requirements.",
+    "Equipment/area has been inspected, repaired, and cleared for safe use.",
+    "Hazard has been isolated and a formal risk assessment is underway.",
+    "Temporary controls are in place while a permanent solution is being arranged.",
+    "Incident reported to department head and corrective action plan is being drafted.",
+  ];
   const queryClient = useQueryClient();
 
   const submitMutation = useMutation({
@@ -1326,6 +1367,27 @@ function ProvideActionForm({
             the compliance findings. This will be sent to the Safety Department
             for review and approval.
           </p>
+          <div className="mb-2">
+            <p className="text-xs font-medium text-gray-500 mb-1">
+              Quick select:
+            </p>
+            <div className="flex flex-wrap gap-1 mb-3">
+              {ACTION_TEMPLATES.map((tpl, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActionText(tpl)}
+                  className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${
+                    actionText === tpl
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                  }`}
+                >
+                  {tpl.length > 40 ? tpl.slice(0, 40) + "…" : tpl}
+                </button>
+              ))}
+            </div>
+          </div>
           <Textarea
             placeholder="Describe the corrective action to be taken..."
             value={actionText}
