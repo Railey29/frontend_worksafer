@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Card,
@@ -50,6 +50,11 @@ import {
   User,
   ArrowRight,
   FileCheck,
+  Pencil,
+  Save,
+  X,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import type {
   SHEReport,
@@ -64,6 +69,7 @@ import {
 import {
   analyzeIncidentImage,
   fetchDepartments,
+  updateAISummary,
 } from "../components/lib/she-api";
 import {
   downloadCSV,
@@ -72,6 +78,167 @@ import {
   downloadJSON,
 } from "../components/lib/she-export";
 import { getStoredUser } from "../utils/user";
+
+function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, reportId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [narrative, setNarrative] = useState(report.ai_summary?.narrative_summary || "");
+  const [incidentType, setIncidentType] = useState(report.ai_summary?.incident_type || "");
+  const [severity, setSeverity] = useState(report.ai_summary?.severity_assessment || "");
+  const [concerns, setConcerns] = useState<string[]>(report.ai_summary?.immediate_concerns || []);
+
+  const updateMutation = useMutation({
+    mutationFn: (params: any) => updateAISummary(reportId, params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["she-report", reportId] });
+      queryClient.invalidateQueries({ queryKey: ["she-reports"] });
+      toast({ title: "Summary Updated", description: "The AI summary has been updated." });
+      setIsEditing(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const handleSave = () => {
+    updateMutation.mutate({
+      narrative_summary: narrative,
+      incident_type: incidentType,
+      severity_assessment: severity,
+      immediate_concerns: concerns.filter(c => c.trim() !== "")
+    });
+  };
+
+  const handleCancel = () => {
+    setNarrative(report.ai_summary?.narrative_summary || "");
+    setIncidentType(report.ai_summary?.incident_type || "");
+    setSeverity(report.ai_summary?.severity_assessment || "");
+    setConcerns(report.ai_summary?.immediate_concerns || []);
+    setIsEditing(false);
+  };
+
+  const addConcern = () => setConcerns([...concerns, ""]);
+  const updateConcern = (index: number, val: string) => {
+    const newC = [...concerns];
+    newC[index] = val;
+    setConcerns(newC);
+  };
+  const removeConcern = (index: number) => {
+    setConcerns(concerns.filter((_, i) => i !== index));
+  };
+
+  if (!report.ai_summary) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Brain className="h-4 w-4" /> AI Incident Summary
+        </CardTitle>
+        {!isEditing && (
+          <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+            <Pencil className="h-4 w-4 mr-2" /> Edit
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4 pt-2">
+        {isEditing ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Narrative Summary</label>
+              <Textarea 
+                value={narrative} 
+                onChange={e => setNarrative(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Incident Type</label>
+                <Input value={incidentType} onChange={e => setIncidentType(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">AI Severity</label>
+                <Input value={severity} onChange={e => setSeverity(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-gray-500 block">Immediate Concerns</label>
+                <Button type="button" variant="outline" size="sm" onClick={addConcern}>
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {concerns.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input value={c} onChange={e => updateConcern(i, e.target.value)} />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeConcern(i)} className="text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {concerns.length === 0 && <p className="text-xs text-gray-400">No immediate concerns listed.</p>}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={handleCancel} disabled={updateMutation.isPending}>
+                <X className="h-4 w-4 mr-2" /> Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {report.ai_summary.narrative_summary}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">
+                  Incident Type
+                </span>
+                <span className="font-medium capitalize">
+                  {report.ai_summary.incident_type.replace(/_/g, " ")}
+                </span>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">AI Severity</span>
+                <span className="font-medium capitalize">
+                  {report.ai_summary.severity_assessment}
+                </span>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">
+                  Immediate Concerns
+                </span>
+                <span className="font-medium">
+                  {report.ai_summary.immediate_concerns?.length || 0} identified
+                </span>
+              </div>
+            </div>
+            {(report.ai_summary.immediate_concerns?.length || 0) > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-red-700 mb-2">
+                  Immediate Concerns
+                </p>
+                <ul className="list-disc list-inside text-sm text-red-800 space-y-1">
+                  {report.ai_summary.immediate_concerns.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 
 // ── Navigation Prompt Banner ──────────────────────────────────────────
 function NavigationPromptBanner({
@@ -682,57 +849,7 @@ export default function IncidentReport() {
       </Card>
 
       {/* AI Summary */}
-      {report.ai_summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Brain className="h-4 w-4" />
-              AI Incident Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {report.ai_summary.narrative_summary}
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">
-                  Incident Type
-                </span>
-                <span className="font-medium capitalize">
-                  {report.ai_summary.incident_type.replace(/_/g, " ")}
-                </span>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">AI Severity</span>
-                <span className="font-medium capitalize">
-                  {report.ai_summary.severity_assessment}
-                </span>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">
-                  Immediate Concerns
-                </span>
-                <span className="font-medium">
-                  {report.ai_summary.immediate_concerns.length} identified
-                </span>
-              </div>
-            </div>
-            {report.ai_summary.immediate_concerns.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-red-700 mb-2">
-                  Immediate Concerns
-                </p>
-                <ul className="list-disc list-inside text-sm text-red-800 space-y-1">
-                  {report.ai_summary.immediate_concerns.map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {report.ai_summary && <AIIncidentSummaryEditable report={report} reportId={report.id || ""} />}
 
       {/* Incident Details */}
       {report.incident_details && (
