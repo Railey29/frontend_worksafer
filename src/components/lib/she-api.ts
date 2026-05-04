@@ -121,11 +121,11 @@ export async function fetchReportById(id: string): Promise<SHEReport> {
 // ---- PATCH /api/reports/{id}/status ----
 export interface UpdateReportStatusParams {
   status:
-    | "submitted"
-    | "under_review"
-    | "action_required"
-    | "in_progress"
-    | "closed";
+  | "submitted"
+  | "under_review"
+  | "action_required"
+  | "in_progress"
+  | "closed";
   notes?: string;
   closed_note?: string;
 }
@@ -233,6 +233,62 @@ export async function updateReportStatus(
 
   return res.json();
 }
+
+// ---- PATCH /api/reports/{id}/ai_summary ----
+export interface UpdateAISummaryParams {
+  narrative_summary?: string;
+  incident_type?: string;
+  severity_assessment?: string;
+  immediate_concerns?: string[];
+}
+
+export async function updateAISummary(
+  id: string,
+  params: UpdateAISummaryParams,
+): Promise<{ report_id: string; message: string }> {
+  const token = localStorage.getItem("token");
+  const userStr = localStorage.getItem("user");
+
+  let userName = "anonymous";
+  try {
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      userName = user.name || user.full_name || user.email || "anonymous";
+    }
+  } catch {
+    // Continue with defaults
+  }
+
+  const body: Record<string, any> = {
+    ...params,
+    updated_by: userName,
+  };
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const requestBody = JSON.stringify(body);
+
+  const res = await fetch(`${SHE_API_BASE}/reports/${id}/ai_summary`, {
+    method: "PATCH",
+    headers,
+    body: requestBody,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const errorMessage = typeof err.detail === "string" ? err.detail : err.message || res.statusText;
+    throw new Error(`Summary update failed (${res.status}): ${errorMessage}`);
+  }
+
+  return res.json();
+}
+
 
 // ---- GET /api/reports/archived ----
 export async function fetchArchivedReports(filters?: {

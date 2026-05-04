@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import {
@@ -15,6 +15,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+import { Textarea } from "../components/ui/textarea";
+import { Input } from "../components/ui/input";
 import { useToast } from "../hooks/use-toast";
 import {
   ArrowLeft,
@@ -41,9 +52,12 @@ import {
   Scale,
   ChevronRight,
   Camera,
-  Zap,
+  Pencil,
+  Save,
+  X,
+  Plus,
+  Trash2,
 } from "lucide-react";
-import { useState } from "react";
 import type { SHEReport, RiskLevel } from "../components/lib/she-api-types";
 import {
   RISK_COLORS,
@@ -55,6 +69,7 @@ import {
   fetchReportById,
   deleteReport,
   updateReportStatus,
+  updateAISummary,
 } from "../components/lib/she-api";
 import {
   downloadCSV,
@@ -103,93 +118,165 @@ const RISK_LEVEL_COLORS: Record<
   },
 };
 
-// ── Automatic Transition Rules ────────────────────────────────────────
-//
-//  Each rule describes:
-//    from       – the workflow status this rule applies to
-//    to         – the target status if trigger() returns true
-//    trigger    – pure function evaluated against the loaded SHEReport
-//    note       – auto-generated audit note written to workflow history
-//
-type TransitionRule = {
-  from: string;
-  to: string;
-  trigger: (report: SHEReport) => boolean;
-  note: string;
-};
+function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, reportId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [narrative, setNarrative] = useState(report.ai_summary?.narrative_summary || "");
+  const [incidentType, setIncidentType] = useState(report.ai_summary?.incident_type || "");
+  const [severity, setSeverity] = useState(report.ai_summary?.severity_assessment || "");
+  const [concerns, setConcerns] = useState<string[]>(report.ai_summary?.immediate_concerns || []);
 
-const TRANSITION_RULES: TransitionRule[] = [
-  // ① submitted → under_review
-  //    Fires when AI classification is present with ≥ 70 % confidence
-  {
-    from: "submitted",
-    to: "under_review",
-    trigger: (r) =>
-      !!r.ai_classification && r.ai_classification.confidence >= 0.7,
-    note: "Auto-advanced to Under Review: AI classification confidence ≥ 70 %.",
-  },
-
-  // ② under_review → action_required
-  //    Fires when the risk assessment flags immediate action OR risk level is critical / high
-  {
-    from: "under_review",
-    to: "action_required",
-    trigger: (r) => {
-      const riskLevel = (r.summary?.overall_risk_level || "").toLowerCase();
-      return (
-        r.risk_assessment.immediate_action_required === true ||
-        r.risk_assessment.stop_work_recommended === true ||
-        riskLevel === "critical" ||
-        riskLevel === "high"
-      );
+  const updateMutation = useMutation({
+    mutationFn: (params: any) => updateAISummary(reportId, params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["she-report", reportId] });
+      queryClient.invalidateQueries({ queryKey: ["she-reports"] });
+      toast({ title: "Summary Updated", description: "The AI summary has been updated." });
+      setIsEditing(false);
     },
-    note: "Auto-advanced to Action Required: immediate action flag or critical/high risk level detected.",
-  },
+    onError: (error: Error) => {
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    }
+  });
 
-  // ③ action_required → in_progress
-  //    Fires when a mitigation plan has been submitted with at least one action
-  {
-    from: "action_required",
-    to: "in_progress",
-    trigger: (r) =>
-      !!r.mitigation &&
-      Array.isArray(r.mitigation.mitigation_actions) &&
-      r.mitigation.mitigation_actions.length > 0,
-    note: "Auto-advanced to In Progress: mitigation plan with actions has been submitted.",
-  },
+  const handleSave = () => {
+    updateMutation.mutate({
+      narrative_summary: narrative,
+      incident_type: incidentType,
+      severity_assessment: severity,
+      immediate_concerns: concerns.filter(c => c.trim() !== "")
+    });
+  };
 
-  // ④ in_progress → closed
-  //    Fires when every mitigation action is completed AND assessment no longer requires mitigation
-  {
-    from: "in_progress",
-    to: "closed",
-    trigger: (r) => {
-      if (!r.mitigation?.mitigation_actions?.length) return false;
-      const allComplete = r.mitigation.mitigation_actions.every(
-        (a) => a.status === "completed",
-      );
-      const noMoreMitigation = r.assessment
-        ? r.assessment.requires_mitigation === false
-        : false;
-      return allComplete && noMoreMitigation;
-    },
-    note: "Auto-closed: all mitigation actions completed and assessment requires no further mitigation.",
-  },
-];
+  const handleCancel = () => {
+    setNarrative(report.ai_summary?.narrative_summary || "");
+    setIncidentType(report.ai_summary?.incident_type || "");
+    setSeverity(report.ai_summary?.severity_assessment || "");
+    setConcerns(report.ai_summary?.immediate_concerns || []);
+    setIsEditing(false);
+  };
 
-// ── evaluateNextTransition ─────────────────────────────────────────────
-// Returns the first matching rule for the current workflow status, or null.
-function evaluateNextTransition(report: SHEReport): TransitionRule | null {
-  const currentStatus = report.workflow?.status;
-  if (!currentStatus) return null;
+  const addConcern = () => setConcerns([...concerns, ""]);
+  const updateConcern = (index: number, val: string) => {
+    const newC = [...concerns];
+    newC[index] = val;
+    setConcerns(newC);
+  };
+  const removeConcern = (index: number) => {
+    setConcerns(concerns.filter((_, i) => i !== index));
+  };
+
+  if (!report.ai_summary) return null;
+
   return (
-    TRANSITION_RULES.find(
-      (rule) => rule.from === currentStatus && rule.trigger(report),
-    ) ?? null
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Brain className="h-4 w-4" /> AI Incident Summary
+        </CardTitle>
+        {!isEditing && (
+          <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+            <Pencil className="h-4 w-4 mr-2" /> Edit
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4 pt-2">
+        {isEditing ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Narrative Summary</label>
+              <Textarea
+                value={narrative}
+                onChange={e => setNarrative(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Incident Type</label>
+                <Input value={incidentType} onChange={e => setIncidentType(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">AI Severity</label>
+                <Input value={severity} onChange={e => setSeverity(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-gray-500 block">Immediate Concerns</label>
+                <Button type="button" variant="outline" size="sm" onClick={addConcern}>
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {concerns.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input value={c} onChange={e => updateConcern(i, e.target.value)} />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeConcern(i)} className="text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {concerns.length === 0 && <p className="text-xs text-gray-400">No immediate concerns listed.</p>}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={handleCancel} disabled={updateMutation.isPending}>
+                <X className="h-4 w-4 mr-2" /> Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {report.ai_summary.narrative_summary}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">
+                  Incident Type
+                </span>
+                <span className="font-medium capitalize">
+                  {report.ai_summary.incident_type.replace(/_/g, " ")}
+                </span>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">AI Severity</span>
+                <span className="font-medium capitalize">
+                  {report.ai_summary.severity_assessment}
+                </span>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <span className="text-xs text-gray-500 block">
+                  Immediate Concerns
+                </span>
+                <span className="font-medium">
+                  {report.ai_summary.immediate_concerns?.length || 0} identified
+                </span>
+              </div>
+            </div>
+            {(report.ai_summary.immediate_concerns?.length || 0) > 0 && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
+                <p className="text-xs font-semibold text-red-700 mb-2">
+                  Immediate Concerns
+                </p>
+                <ul className="list-disc list-inside text-sm text-red-800 space-y-1">
+                  {report.ai_summary.immediate_concerns.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ReportDetail() {
   const params = useParams<{ id: string }>();
@@ -198,9 +285,9 @@ export default function ReportDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showLegal, setShowLegal] = useState(false);
-
-  // Track which transition we already fired in this session to avoid loops
-  const firedTransitionRef = useRef<string | null>(null);
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<string>("");
+  const [statusNotes, setStatusNotes] = useState("");
 
   const user = getStoredUser();
   const isSafetyDept = isSafetyDepartmentAccount({
@@ -219,46 +306,6 @@ export default function ReportDetail() {
     enabled: !!id,
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: (params: { status: string; notes?: string }) =>
-      updateReportStatus(id, {
-        status: params.status as any,
-        notes: params.notes,
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["she-report", id] });
-      queryClient.invalidateQueries({ queryKey: ["she-reports"] });
-      toast({
-        title: "⚡ Status Auto-Updated",
-        description: `Workflow advanced to "${variables.status.replace(/_/g, " ")}" based on report data.`,
-      });
-    },
-    onError: (error: Error) => {
-      console.error("Auto status update error:", error);
-      toast({
-        title: "Auto Status Update Failed",
-        description: error.message.replace(/^.*?: /, ""),
-        variant: "destructive",
-      });
-    },
-  });
-
-  // ── Auto-transition effect ──────────────────────────────────────────
-  useEffect(() => {
-    if (!report || updateStatusMutation.isPending) return;
-
-    const rule = evaluateNextTransition(report);
-    if (!rule) return;
-
-    // Deduplicate: only fire once per (id + target status) per mount
-    const key = `${id}:${rule.to}`;
-    if (firedTransitionRef.current === key) return;
-    firedTransitionRef.current = key;
-
-    updateStatusMutation.mutate({ status: rule.to, notes: rule.note });
-  }, [report]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── deleteMutation kept for archive capability ──────────────────────
   const deleteMutation = useMutation({
     mutationFn: () => deleteReport(id),
     onSuccess: () => {
@@ -274,6 +321,55 @@ export default function ReportDetail() {
       });
     },
   });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: (params: { status: string; notes?: string }) =>
+      updateReportStatus(id, {
+        status: params.status as any,
+        notes: params.notes,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["she-report", id] });
+      queryClient.invalidateQueries({ queryKey: ["she-reports"] });
+
+      toast({
+        title: "✓ Status Updated",
+        description: `Report status changed to ${selectedStatus.replace(/_/g, " ")}`,
+      });
+
+      setShowStatusDialog(false);
+      setSelectedStatus("");
+      setStatusNotes("");
+    },
+    onError: (error: Error) => {
+      console.error("Status update error:", error);
+
+      const isDeptMismatch =
+        error.message.includes("DEPARTMENT_MISMATCH") ||
+        error.message.toLowerCase().includes("assigned department");
+
+      toast({
+        title: "Status Update Failed",
+        description: isDeptMismatch
+          ? `The backend requires the assigned department to confirm this transition. ` +
+          `Ask your backend team to allow Safety Department to override all status changes ` +
+          `(remove the DEPARTMENT_MISMATCH guard for users with role 'Safety Department').`
+          : error.message.replace(/^.*?: /, ""),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStatusSubmit = () => {
+    if (!selectedStatus) {
+      toast({ title: "Please select a status", variant: "destructive" });
+      return;
+    }
+    updateStatusMutation.mutate({
+      status: selectedStatus,
+      notes: statusNotes || undefined,
+    });
+  };
 
   if (isLoading) {
     return (
@@ -355,9 +451,6 @@ export default function ReportDetail() {
 
   const complianceObligations = (report as any).compliance_obligations;
 
-  // Compute the pending transition (if any) for the info banner
-  const pendingRule = evaluateNextTransition(report);
-
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Top Bar */}
@@ -390,27 +483,6 @@ export default function ReportDetail() {
           </DropdownMenu>
         </div>
       </div>
-
-      {/* ── Auto-transition in-flight banner ── */}
-      {updateStatusMutation.isPending && (
-        <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-          <Loader2 className="h-4 w-4 text-indigo-600 animate-spin shrink-0" />
-          <p className="text-sm text-indigo-800">
-            Automatically advancing workflow status based on report data…
-          </p>
-        </div>
-      )}
-
-      {/* ── Pending auto-transition hint (shows before the mutation fires) ── */}
-      {!updateStatusMutation.isPending && pendingRule && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <Zap className="h-4 w-4 text-blue-600 shrink-0" />
-          <p className="text-sm text-blue-800">
-            <span className="font-semibold">Auto-transition queued:</span>{" "}
-            {pendingRule.note}
-          </p>
-        </div>
-      )}
 
       {/* ── Report Header with Report ID and Created By ── */}
       {report?.report_header && (
@@ -463,6 +535,9 @@ export default function ReportDetail() {
               </div>
             </div>
 
+            {/* ============================================================
+                REPORT ID AND CREATED BY - ADDED HERE
+            ============================================================ */}
             <div className="mt-4 pt-4 border-t border-gray-200">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -489,56 +564,7 @@ export default function ReportDetail() {
       )}
 
       {/* ── AI Summary ── */}
-      {report.ai_summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Brain className="h-4 w-4" /> AI Incident Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {report.ai_summary.narrative_summary}
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">
-                  Incident Type
-                </span>
-                <span className="font-medium capitalize">
-                  {report.ai_summary.incident_type.replace(/_/g, " ")}
-                </span>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">AI Severity</span>
-                <span className="font-medium capitalize">
-                  {report.ai_summary.severity_assessment}
-                </span>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs text-gray-500 block">
-                  Immediate Concerns
-                </span>
-                <span className="font-medium">
-                  {report.ai_summary.immediate_concerns.length} identified
-                </span>
-              </div>
-            </div>
-            {report.ai_summary.immediate_concerns.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-red-700 mb-2">
-                  Immediate Concerns
-                </p>
-                <ul className="list-disc list-inside text-sm text-red-800 space-y-1">
-                  {report.ai_summary.immediate_concerns.map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {report.ai_summary && <AIIncidentSummaryEditable report={report} reportId={id} />}
 
       {/* ── Incident Details ── */}
       {report.incident_details && (
@@ -712,11 +738,10 @@ export default function ReportDetail() {
               .map(([key, val]) => (
                 <div
                   key={key}
-                  className={`flex items-center gap-2 p-3 rounded-lg border ${
-                    val === 1
+                  className={`flex items-center gap-2 p-3 rounded-lg border ${val === 1
                       ? "bg-green-50 border-green-200"
                       : "bg-red-50 border-red-200"
-                  }`}
+                    }`}
                 >
                   {val === 1 ? (
                     <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
@@ -1217,136 +1242,204 @@ export default function ReportDetail() {
 
       {/* ── Workflow ── */}
       {report.workflow && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4" /> Workflow Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <WorkflowStatusVisualization
-              currentStatus={report.workflow.status}
-              size="md"
-            />
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="h-4 w-4" /> Workflow Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <WorkflowStatusVisualization
+                currentStatus={report.workflow.status}
+                size="md"
+              />
 
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-3 items-center">
-                <Badge
-                  className={`${(WORKFLOW_STATUS_COLORS[report.workflow.status] || { bg: "bg-gray-100", text: "text-gray-800" }).bg} ${(WORKFLOW_STATUS_COLORS[report.workflow.status] || { bg: "bg-gray-100", text: "text-gray-800" }).text}`}
-                >
-                  {report.workflow.status.replace(/_/g, " ").toUpperCase()}
-                </Badge>
-                <span className="text-sm text-gray-600">
-                  Assigned to:{" "}
-                  <strong className="capitalize">
-                    {report.workflow.assigned_department.replace(/_/g, " ")}
-                  </strong>
-                </span>
-                {report.workflow.fully_automated && (
-                  <Badge className="bg-indigo-100 text-indigo-800">
-                    Fully Automated
-                  </Badge>
-                )}
-                <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1">
-                  <Zap className="h-3 w-3" /> Auto-managed
-                </Badge>
-              </div>
-
-              {/* Automation rule legend */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1.5">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Automation Rules
-                </p>
-                {TRANSITION_RULES.map((rule) => {
-                  const isPast =
-                    [
-                      "submitted",
-                      "under_review",
-                      "action_required",
-                      "in_progress",
-                      "closed",
-                    ].indexOf(report.workflow!.status) >
-                    [
-                      "submitted",
-                      "under_review",
-                      "action_required",
-                      "in_progress",
-                      "closed",
-                    ].indexOf(rule.from);
-                  const isCurrent = rule.from === report.workflow!.status;
-                  return (
-                    <div
-                      key={rule.from + rule.to}
-                      className={`flex items-start gap-2 text-xs ${
-                        isPast
-                          ? "text-green-700"
-                          : isCurrent
-                            ? "text-blue-700 font-semibold"
-                            : "text-gray-400"
-                      }`}
-                    >
-                      {isPast ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      ) : isCurrent ? (
-                        <Zap className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      ) : (
-                        <Clock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      )}
-                      <span>
-                        <span className="capitalize">
-                          {rule.from.replace(/_/g, " ")}
-                        </span>
-                        {" → "}
-                        <span className="capitalize">
-                          {rule.to.replace(/_/g, " ")}
-                        </span>
-                        {": "}
-                        {rule.note}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <p className="text-xs text-gray-400 italic">
-                Workflow status is managed automatically. No manual intervention
-                required.
-              </p>
-            </div>
-
-            {report.workflow.history.length > 0 && (
               <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-gray-900">
-                  Workflow History
-                </h4>
-                <div className="border-l-2 border-gray-200 pl-4 space-y-3 ml-2">
-                  {report.workflow.history.map((h, i) => (
-                    <div key={i} className="relative">
-                      <div className="absolute -left-[1.35rem] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white" />
-                      <p className="text-sm font-medium capitalize">
-                        {h.action.replace(/_/g, " ")}
+                <div className="flex flex-wrap gap-3 items-center">
+                  <Badge
+                    className={`${(WORKFLOW_STATUS_COLORS[report.workflow.status] || { bg: "bg-gray-100", text: "text-gray-800" }).bg} ${(WORKFLOW_STATUS_COLORS[report.workflow.status] || { bg: "bg-gray-100", text: "text-gray-800" }).text}`}
+                  >
+                    {report.workflow.status.replace(/_/g, " ").toUpperCase()}
+                  </Badge>
+                  <span className="text-sm text-gray-600">
+                    Assigned to:{" "}
+                    <strong className="capitalize">
+                      {report.workflow.assigned_department.replace(/_/g, " ")}
+                    </strong>
+                  </span>
+                  {report.workflow.fully_automated && (
+                    <Badge className="bg-indigo-100 text-indigo-800">
+                      Fully Automated
+                    </Badge>
+                  )}
+                </div>
+
+                {isSafetyDept && (
+                  <Button
+                    onClick={() => setShowStatusDialog(true)}
+                    className="w-full sm:w-auto"
+                  >
+                    <ChevronRight className="mr-2 h-4 w-4" />
+                    Update Status
+                  </Button>
+                )}
+
+                {!isSafetyDept && (
+                  <p className="text-sm text-gray-500 italic">
+                    Only Safety Department can update report status.
+                  </p>
+                )}
+              </div>
+
+              {report.workflow.history.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-sm text-gray-900">
+                    Workflow History
+                  </h4>
+                  <div className="border-l-2 border-gray-200 pl-4 space-y-3 ml-2">
+                    {report.workflow.history.map((h, i) => (
+                      <div key={i} className="relative">
+                        <div className="absolute -left-[1.35rem] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white" />
+                        <p className="text-sm font-medium capitalize">
+                          {h.action.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {h.by} ({h.role}) —{" "}
+                          {new Date(h.timestamp).toLocaleString()}
+                        </p>
+                        {h.notes && (
+                          <p className="text-xs text-gray-600 mt-1">
+                            {h.notes}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.workflow.closed_at && (
+                <p className="text-xs text-gray-500">
+                  Closed by {report.workflow.closed_by} on{" "}
+                  {new Date(report.workflow.closed_at).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <AlertDialog
+            open={showStatusDialog}
+            onOpenChange={(open) => {
+              if (!open && updateStatusMutation.isPending) return;
+              setShowStatusDialog(open);
+            }}
+          >
+            <AlertDialogContent className="max-w-md">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Update Report Status</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Select the new status for this report. Your action will be
+                  recorded in the workflow history.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <div className="space-y-4 py-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">
+                    New Status
+                  </label>
+                  {report.workflow?.status === "closed" && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3">
+                      <p className="text-sm text-amber-800">
+                        ⚠️ This report is closed and cannot be reopened.
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {h.by} ({h.role}) —{" "}
-                        {new Date(h.timestamp).toLocaleString()}
-                      </p>
-                      {h.notes && (
-                        <p className="text-xs text-gray-600 mt-1">{h.notes}</p>
-                      )}
                     </div>
-                  ))}
+                  )}
+                  <div className="space-y-2">
+                    {[
+                      "submitted",
+                      "under_review",
+                      "action_required",
+                      "in_progress",
+                      "closed",
+                    ].map((status) => {
+                      const isDisabled =
+                        status === report.workflow?.status ||
+                        (report.workflow?.status === "closed" &&
+                          status !== "closed");
+                      const isCurrentStatus =
+                        status === report.workflow?.status;
+
+                      return (
+                        <label
+                          key={status}
+                          className={`flex items-center gap-3 p-2 rounded border cursor-pointer ${isDisabled
+                              ? "opacity-50 cursor-not-allowed bg-gray-50"
+                              : "hover:bg-gray-50"
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="status"
+                            value={status}
+                            checked={selectedStatus === status}
+                            onChange={(e) => setSelectedStatus(e.target.value)}
+                            disabled={isDisabled}
+                            className="rounded"
+                          />
+                          <span className="flex-1 text-sm">
+                            {(
+                              WORKFLOW_STATUS_COLORS[status]?.label || status
+                            ).replace(/_/g, " ")}
+                            {isCurrentStatus && (
+                              <span className="ml-1 text-xs text-gray-500">
+                                (current)
+                              </span>
+                            )}
+                          </span>
+                          <Badge
+                            className={`${WORKFLOW_STATUS_COLORS[status]?.bg} ${WORKFLOW_STATUS_COLORS[status]?.text} text-xs`}
+                          >
+                            {status.replace(/_/g, " ")}
+                          </Badge>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">
+                    Notes (Optional)
+                  </label>
+                  <Textarea
+                    placeholder="Add any notes about this status change..."
+                    value={statusNotes}
+                    onChange={(e) => setStatusNotes(e.target.value)}
+                    className="min-h-[100px]"
+                  />
                 </div>
               </div>
-            )}
 
-            {report.workflow.closed_at && (
-              <p className="text-xs text-gray-500">
-                Closed by {report.workflow.closed_by} on{" "}
-                {new Date(report.workflow.closed_at).toLocaleString()}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={updateStatusMutation.isPending}>
+                  Cancel
+                </AlertDialogCancel>
+
+                <Button
+                  onClick={handleStatusSubmit}
+                  disabled={updateStatusMutation.isPending || !selectedStatus}
+                >
+                  {updateStatusMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Update Status
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )}
 
       {/* ── Overall Risk Assessment ── */}
