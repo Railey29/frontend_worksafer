@@ -79,6 +79,21 @@ import {
 } from "../components/lib/she-export";
 import { getStoredUser } from "../utils/user";
 
+function getCurrentDateValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeValue() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, reportId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -290,8 +305,9 @@ export default function IncidentReport() {
   const [description, setDescription] = useState("");
   const [showDescriptionError, setShowDescriptionError] = useState(false);
   const [location, setLocation] = useState("");
-  const [incidentDate, setIncidentDate] = useState("");
-  const [incidentTime, setIncidentTime] = useState("");
+  const [showLocationError, setShowLocationError] = useState(false);
+  const [incidentDate, setIncidentDate] = useState(() => getCurrentDateValue());
+  const [incidentTime, setIncidentTime] = useState(() => getCurrentTimeValue());
   const { toast } = useToast();
 
   const { data: departments } = useQuery<SHEDepartments>({
@@ -353,7 +369,17 @@ export default function IncidentReport() {
       });
       return;
     }
+    if (!location.trim()) {
+      setShowLocationError(true);
+      toast({
+        title: "Required Field Missing",
+        description: "Please provide a Location before analyzing.",
+        variant: "destructive",
+      });
+      return;
+    }
     setShowDescriptionError(false);
+    setShowLocationError(false);
     if (selectedImage) {
       analyzeMutation.mutate(selectedImage);
     }
@@ -389,8 +415,9 @@ export default function IncidentReport() {
     setDescription("");
     setShowDescriptionError(false);
     setLocation("");
-    setIncidentDate("");
-    setIncidentTime("");
+    setShowLocationError(false);
+    setIncidentDate(getCurrentDateValue());
+    setIncidentTime(getCurrentTimeValue());
   };
 
   const handleExport = (format: string) => {
@@ -576,14 +603,20 @@ export default function IncidentReport() {
                   htmlFor="location"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
-                  Location (optional)
+                  Location <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="location"
                   placeholder="e.g., Building A, Floor 3, Section C"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full"
+                  onChange={(e) => {
+                    setLocation(e.target.value);
+                    if (showLocationError && e.target.value.trim()) {
+                      setShowLocationError(false);
+                    }
+                  }}
+                  className={`w-full ${showLocationError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  required
                 />
               </div>
 
@@ -593,7 +626,7 @@ export default function IncidentReport() {
                     htmlFor="incident-date"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Date (optional)
+                    Incident Date
                   </Label>
                   <Input
                     id="incident-date"
@@ -608,7 +641,7 @@ export default function IncidentReport() {
                     htmlFor="incident-time"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Time (optional)
+                    Incident Time
                   </Label>
                   <Input
                     id="incident-time"
