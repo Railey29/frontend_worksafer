@@ -79,21 +79,6 @@ import {
 } from "../components/lib/she-export";
 import { getStoredUser } from "../utils/user";
 
-function getCurrentDateValue() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getCurrentTimeValue() {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
 function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, reportId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -171,11 +156,42 @@ function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, re
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Incident Type</label>
-                <Input value={incidentType} onChange={e => setIncidentType(e.target.value)} />
+                <Select value={incidentType} onValueChange={setIncidentType}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="injury">Injury</SelectItem>
+                    <SelectItem value="near_miss">Near Miss</SelectItem>
+                    <SelectItem value="property_damage">Property Damage</SelectItem>
+                    <SelectItem value="environmental">Environmental</SelectItem>
+                    <SelectItem value="equipment_failure">Equipment Failure</SelectItem>
+                    <SelectItem value="safety_violation">Safety Violation</SelectItem>
+                    {incidentType && !["injury", "near_miss", "property_damage", "environmental", "equipment_failure", "safety_violation"].includes(incidentType.toLowerCase()) && (
+                      <SelectItem value={incidentType}>{incidentType}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">AI Severity</label>
-                <Input value={severity} onChange={e => setSeverity(e.target.value)} />
+                <Select value={severity} onValueChange={setSeverity}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select severity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="critical">Critical</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="safe">Safe</SelectItem>
+                    <SelectItem value="serious">Serious</SelectItem>
+                    <SelectItem value="minor">Minor</SelectItem>
+                    {severity && !["critical", "high", "medium", "low", "safe", "serious", "minor"].includes(severity.toLowerCase()) && (
+                      <SelectItem value={severity}>{severity}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>
@@ -305,9 +321,8 @@ export default function IncidentReport() {
   const [description, setDescription] = useState("");
   const [showDescriptionError, setShowDescriptionError] = useState(false);
   const [location, setLocation] = useState("");
-  const [showLocationError, setShowLocationError] = useState(false);
-  const [incidentDate, setIncidentDate] = useState(() => getCurrentDateValue());
-  const [incidentTime, setIncidentTime] = useState(() => getCurrentTimeValue());
+  const [incidentDate, setIncidentDate] = useState("");
+  const [incidentTime, setIncidentTime] = useState("");
   const { toast } = useToast();
 
   const { data: departments } = useQuery<SHEDepartments>({
@@ -369,17 +384,7 @@ export default function IncidentReport() {
       });
       return;
     }
-    if (!location.trim()) {
-      setShowLocationError(true);
-      toast({
-        title: "Required Field Missing",
-        description: "Please provide a Location before analyzing.",
-        variant: "destructive",
-      });
-      return;
-    }
     setShowDescriptionError(false);
-    setShowLocationError(false);
     if (selectedImage) {
       analyzeMutation.mutate(selectedImage);
     }
@@ -415,9 +420,8 @@ export default function IncidentReport() {
     setDescription("");
     setShowDescriptionError(false);
     setLocation("");
-    setShowLocationError(false);
-    setIncidentDate(getCurrentDateValue());
-    setIncidentTime(getCurrentTimeValue());
+    setIncidentDate("");
+    setIncidentTime("");
   };
 
   const handleExport = (format: string) => {
@@ -603,20 +607,14 @@ export default function IncidentReport() {
                   htmlFor="location"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
-                  Location <span className="text-red-500">*</span>
+                  Location (optional)
                 </Label>
                 <Input
                   id="location"
                   placeholder="e.g., Building A, Floor 3, Section C"
                   value={location}
-                  onChange={(e) => {
-                    setLocation(e.target.value);
-                    if (showLocationError && e.target.value.trim()) {
-                      setShowLocationError(false);
-                    }
-                  }}
-                  className={`w-full ${showLocationError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                  required
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full"
                 />
               </div>
 
@@ -626,7 +624,7 @@ export default function IncidentReport() {
                     htmlFor="incident-date"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Date
+                    Incident Date (optional)
                   </Label>
                   <Input
                     id="incident-date"
@@ -641,7 +639,7 @@ export default function IncidentReport() {
                     htmlFor="incident-time"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Incident Time
+                    Incident Time (optional)
                   </Label>
                   <Input
                     id="incident-time"
@@ -676,10 +674,10 @@ export default function IncidentReport() {
             <CardContent className="space-y-4">
               <div
                 className={`border-2 border-dashed rounded-lg p-10 transition-colors ${hasPhoto
-                    ? "border-gray-200 bg-gray-50 cursor-not-allowed opacity-60"
-                    : isDragging
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-300 hover:border-blue-400 hover:bg-blue-50/30"
+                  ? "border-gray-200 bg-gray-50 cursor-not-allowed opacity-60"
+                  : isDragging
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-300 hover:border-blue-400 hover:bg-blue-50/30"
                   }`}
                 onDrop={hasPhoto ? undefined : handleDrop}
                 onDragOver={hasPhoto ? undefined : handleDragOver}

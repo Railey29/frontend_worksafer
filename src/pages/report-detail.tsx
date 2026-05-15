@@ -26,6 +26,13 @@ import {
 } from "../components/ui/alert-dialog";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { useToast } from "../hooks/use-toast";
 import {
   ArrowLeft,
@@ -195,11 +202,42 @@ function AIIncidentSummaryEditable({ report, reportId }: { report: SHEReport, re
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Incident Type</label>
-                <Input value={incidentType} onChange={e => setIncidentType(e.target.value)} />
+                <Select value={incidentType} onValueChange={setIncidentType}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="injury">Injury</SelectItem>
+                    <SelectItem value="near_miss">Near Miss</SelectItem>
+                    <SelectItem value="property_damage">Property Damage</SelectItem>
+                    <SelectItem value="environmental">Environmental</SelectItem>
+                    <SelectItem value="equipment_failure">Equipment Failure</SelectItem>
+                    <SelectItem value="safety_violation">Safety Violation</SelectItem>
+                    {incidentType && !["injury", "near_miss", "property_damage", "environmental", "equipment_failure", "safety_violation"].includes(incidentType.toLowerCase()) && (
+                      <SelectItem value={incidentType}>{incidentType}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">AI Severity</label>
-                <Input value={severity} onChange={e => setSeverity(e.target.value)} />
+                <Select value={severity} onValueChange={setSeverity}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select severity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="critical">Critical</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="safe">Safe</SelectItem>
+                    <SelectItem value="serious">Serious</SelectItem>
+                    <SelectItem value="minor">Minor</SelectItem>
+                    {severity && !["critical", "high", "medium", "low", "safe", "serious", "minor"].includes(severity.toLowerCase()) && (
+                      <SelectItem value={severity}>{severity}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>
@@ -739,8 +777,8 @@ export default function ReportDetail() {
                 <div
                   key={key}
                   className={`flex items-center gap-2 p-3 rounded-lg border ${val === 1
-                      ? "bg-green-50 border-green-200"
-                      : "bg-red-50 border-red-200"
+                    ? "bg-green-50 border-green-200"
+                    : "bg-red-50 border-red-200"
                     }`}
                 >
                   {val === 1 ? (
@@ -1375,8 +1413,8 @@ export default function ReportDetail() {
                         <label
                           key={status}
                           className={`flex items-center gap-3 p-2 rounded border cursor-pointer ${isDisabled
-                              ? "opacity-50 cursor-not-allowed bg-gray-50"
-                              : "hover:bg-gray-50"
+                            ? "opacity-50 cursor-not-allowed bg-gray-50"
+                            : "hover:bg-gray-50"
                             }`}
                         >
                           <input

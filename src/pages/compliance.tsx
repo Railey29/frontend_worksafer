@@ -1166,9 +1166,17 @@ function ActionItem({
             </p>
           )}
           {action.approved_by && (
-            <p className="text-xs text-green-600 mt-1">
-              Approved by: {action.approved_by}
-            </p>
+            <div className="mt-1">
+              <p className="text-xs text-green-600">
+                Approved by: {action.approved_by}
+              </p>
+              {action.approved_at && (
+                <p className="text-xs text-green-600 mt-0.5">
+                  Approved on: {new Date(action.approved_at).toLocaleDateString()}{" "}
+                  {new Date(action.approved_at).toLocaleTimeString()}
+                </p>
+              )}
+            </div>
           )}
 
           {/* Render proof_image if exists */}
@@ -1217,11 +1225,10 @@ function ActionItem({
                         key={i}
                         type="button"
                         onClick={() => setReviewNotes(tpl)}
-                        className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${
-                          reviewNotes === tpl
+                        className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${reviewNotes === tpl
                             ? "bg-blue-600 text-white border-blue-600"
                             : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
-                        }`}
+                          }`}
                       >
                         {tpl.length > 35 ? tpl.slice(0, 35) + "…" : tpl}
                       </button>
@@ -1377,11 +1384,10 @@ function ProvideActionForm({
                   key={i}
                   type="button"
                   onClick={() => setActionText(tpl)}
-                  className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${
-                    actionText === tpl
+                  className={`text-xs px-2 py-1 rounded-full border transition-colors text-left ${actionText === tpl
                       ? "bg-blue-600 text-white border-blue-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
-                  }`}
+                    }`}
                 >
                   {tpl.length > 40 ? tpl.slice(0, 40) + "…" : tpl}
                 </button>
