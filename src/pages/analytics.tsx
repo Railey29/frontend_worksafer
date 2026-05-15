@@ -109,21 +109,23 @@ function triggerDownload(blob: Blob, filename: string) {
 
 function buildMlDisplayLines(
   output: DepartmentMlData["ml_output"],
-): Array<{ hazard: string; probability: number }> {
+): Array<{ hazard: string; probability: number; prevention?: string }> {
   if (!output) return [];
 
   const known = new Set<string>(ML_DISPLAY_ORDER as unknown as string[]);
   const getProb = (hazard: string) => Number(output?.[hazard]?.probability ?? 0);
+  const getPrev = (hazard: string) => output?.[hazard]?.prevention;
 
   const lines = (ML_DISPLAY_ORDER as unknown as string[]).map((hazard) => ({
     hazard,
     probability: getProb(hazard),
+    prevention: getPrev(hazard),
   }));
 
   const extras = Object.keys(output).filter((k) => !known.has(k));
   extras.sort((a, b) => a.localeCompare(b));
   for (const hazard of extras) {
-    lines.push({ hazard, probability: getProb(hazard) });
+    lines.push({ hazard, probability: getProb(hazard), prevention: getPrev(hazard) });
   }
 
   return lines;
@@ -138,6 +140,38 @@ function toSortedCounts(items: string[]) {
   return Object.entries(counts)
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+function generateInterpretationParagraph(
+  lines: Array<{ hazard: string; probability: number; prevention?: string }>,
+  departmentName: string
+) {
+  const risks = lines.filter((r) => r.probability > 0 && r.hazard !== "Safe");
+  if (risks.length === 0) return `Based on the current data, no significant risks have been detected for ${departmentName}.`;
+
+  const sortedRisks = [...risks].sort((a, b) => b.probability - a.probability);
+  const topRisks = sortedRisks.slice(0, 3);
+  
+  let paragraph = `Based on the predictive analysis for ${departmentName}, there are notable safety risks present. `;
+  
+  if (topRisks.length === 1) {
+    paragraph += `The primary concern is ${topRisks[0].hazard} with a probability of ${topRisks[0].probability.toFixed(1)}%. `;
+  } else {
+    paragraph += `The most significant concerns are ${topRisks[0].hazard} (${topRisks[0].probability.toFixed(1)}%)`;
+    if (topRisks.length > 1) paragraph += `, followed by ${topRisks[1].hazard} (${topRisks[1].probability.toFixed(1)}%)`;
+    if (topRisks.length > 2) paragraph += ` and ${topRisks[2].hazard} (${topRisks[2].probability.toFixed(1)}%). `;
+    else paragraph += `. `;
+  }
+
+  const preventions = topRisks.filter(r => r.prevention).map(r => r.prevention);
+  
+  if (preventions.length > 0) {
+    paragraph += `To mitigate these risks, it is highly recommended to: ${preventions.join(" ")}`;
+  } else {
+    paragraph += `Please ensure that standard safety protocols and equipment are strictly utilized to minimize these hazards.`;
+  }
+
+  return paragraph;
 }
 
 export default function Analytics() {
@@ -601,7 +635,7 @@ export default function Analytics() {
         return lines.map((row) => [
           row.hazard,
           `${row.probability.toFixed(1)}%`,
-          String(output?.[row.hazard]?.prevention ?? ""),
+          row.prevention || "",
         ]);
       };
 
@@ -947,12 +981,25 @@ export default function Analytics() {
                           {label}
                         </div>
                         {data?.ml_output ? (
-                          <div className="rounded-lg bg-slate-950 text-slate-100 font-mono text-sm p-3 border border-slate-800">
-                            {lines.map((row) => (
-                              <div key={row.hazard} className="leading-6">
-                                {row.hazard}: {row.probability.toFixed(1)}%
+                          <div className="space-y-4">
+                            <div className="rounded-lg bg-slate-950 text-slate-100 font-mono text-sm p-3 border border-slate-800">
+                              {lines.map((row) => (
+                                <div key={row.hazard} className="leading-6">
+                                  {row.hazard}: {row.probability.toFixed(1)}%
+                                </div>
+                              ))}
+                            </div>
+
+                            {lines.some((r) => r.probability > 0) && (
+                              <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4">
+                                <h4 className="text-sm font-semibold text-indigo-900 mb-2">
+                                  Interpretation & Prevention
+                                </h4>
+                                <p className="text-sm text-indigo-800 leading-relaxed text-justify">
+                                  {generateInterpretationParagraph(lines, label)}
+                                </p>
                               </div>
-                            ))}
+                            )}
                           </div>
                         ) : (
                           <p className="text-sm text-gray-600">
@@ -1001,6 +1048,17 @@ export default function Analytics() {
                     </div>
                   ))}
                 </div>
+
+                {mlDisplayLines.some((r) => r.probability > 0) && (
+                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4">
+                    <h4 className="text-sm font-semibold text-indigo-900 mb-2">
+                      Interpretation & Prevention
+                    </h4>
+                    <p className="text-sm text-indigo-800 leading-relaxed text-justify">
+                      {generateInterpretationParagraph(mlDisplayLines, analyticsDeptLabel)}
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-gray-600">
